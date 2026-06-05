@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>틱택토 네온 배틀 | Tic-Tac-Toe Neon Battle</title>
+  <!-- Google Fonts for premium typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="./styles.css">
+  <!-- FontAwesome Icons (loaded via CDN for clean settings icons, volume controls, etc.) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- canvas-confetti library for win effects -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header>
+      <div class="logo">
+        <h1>NEON BATTLE</h1>
+        <span>TIC-TAC-TOE</span>
+      </div>
+      <div class="flex gap-sm">
+        <button id="sound-toggle-btn" class="icon-btn" title="소리 켜기/끄기">
+          <i class="fa-solid fa-volume-high"></i>
+        </button>
+        <button id="settings-toggle-btn" class="icon-btn" title="설정">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- 1. LOBBY SCREEN -->
+    <div id="lobby-screen" class="screen active">
+      <div class="lobby-title">
+        <h2>플레이 모드 선택</h2>
+        <p>친구 혹은 AI와 실시간으로 대전하세요</p>
+      </div>
+
+      <div class="input-group">
+        <label for="player-name-input">내 이름</label>
+        <input type="text" id="player-name-input" class="input-control" placeholder="플레이어 이름 입력" maxlength="12" value="플레이어">
+      </div>
+
+      <div class="mode-selector">
+        <div id="mode-local-btn" class="mode-card active">
+          <h3>로컬 대전</h3>
+          <p>한 기기로 대전</p>
+        </div>
+        <div id="mode-ai-btn" class="mode-card">
+          <h3>AI 대전</h3>
+          <p>인공지능과 승부</p>
+        </div>
+      </div>
+
+      <div id="ai-difficulty-group" class="input-group hidden">
+        <label>AI 난이도</label>
+        <div class="mode-selector">
+          <div id="diff-easy-btn" class="mode-card">
+            <h3>쉬움</h3>
+            <p>초보자용</p>
+          </div>
+          <div id="diff-hard-btn" class="mode-card active">
+            <h3>어려움</h3>
+            <p>언비터블 (최적)</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="lobby-menu">
+        <button id="start-local-btn" class="btn btn-primary">
+          <i class="fa-solid fa-play"></i> 게임 시작
+        </button>
+        
+        <div id="multiplayer-options">
+          <div class="divider">또는 온라인 멀티플레이어</div>
+          <button id="create-room-btn" class="btn btn-secondary">
+            <i class="fa-solid fa-plus"></i> 방 만들기 (Host)
+          </button>
+          
+          <div class="input-group mt-md">
+            <div class="flex gap-sm">
+              <input type="text" id="room-code-input" class="input-control" placeholder="6자리 방 코드 입력" maxlength="6">
+              <button id="join-room-btn" class="btn btn-secondary" style="width: auto; padding: 12px 24px;">
+                참가
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. ROOM SCREEN (Waiting for players) -->
+    <div id="room-screen" class="screen">
+      <div class="room-details">
+        <div class="lobby-title">
+          <h2>대기실 입장 완료</h2>
+          <p>아래 코드를 친구에게 전달하여 접속하게 하세요.</p>
+        </div>
+
+        <div id="copy-code-btn" class="room-code-box" title="클릭하여 코드 복사">
+          <span id="display-room-code" class="room-code">------</span>
+          <div class="room-code-label">방 코드 (클릭 시 복사)</div>
+        </div>
+
+        <div class="waiting-spinner"></div>
+        <p id="waiting-status" style="color: var(--color-text-muted); font-size: 0.9rem;">상대방의 접속을 기다리는 중...</p>
+
+        <div class="players-joined">
+          <div class="player-slot x-slot filled">
+            <div class="symbol">X</div>
+            <div id="host-name" class="name">Player 1</div>
+          </div>
+          <div class="player-slot o-slot" id="guest-slot">
+            <div class="symbol">O</div>
+            <div id="guest-name" class="name">대기 중...</div>
+          </div>
+        </div>
+      </div>
+
+      <button id="leave-room-btn" class="btn btn-outline mt-md">
+        <i class="fa-solid fa-arrow-left"></i> 나가기
+      </button>
+    </div>
+
+    <!-- 3. GAME SCREEN -->
+    <div id="game-screen" class="screen">
+      <div class="game-info">
+        <!-- Turn indicator -->
+        <div id="turn-display" class="turn-indicator x-turn">
+          <div class="turn-dot"></div>
+          <span id="turn-text" class="turn-text">X의 차례</span>
+        </div>
+
+        <!-- 15s Timer -->
+        <div class="timer-container" id="timer-box">
+          <svg class="timer-svg">
+            <circle class="timer-circle-bg" cx="25" cy="25" r="20" />
+            <circle id="timer-progress" class="timer-circle-progress" cx="25" cy="25" r="20" />
+          </svg>
+          <div id="timer-num" class="timer-text">15</div>
+        </div>
+      </div>
+
+      <!-- Scoreboard -->
+      <div class="scoreboard">
+        <div class="score-col x-score">
+          <span class="score-label" id="score-x-label">PLAYER X</span>
+          <span id="score-x" class="score-val">0</span>
+        </div>
+        <div class="score-col tie-score">
+          <span class="score-label">무승부</span>
+          <span id="score-tie" class="score-val">0</span>
+        </div>
+        <div class="score-col o-score">
+          <span class="score-label" id="score-o-label">PLAYER O</span>
+          <span id="score-o" class="score-val">0</span>
+        </div>
+      </div>
+
+      <!-- 3x3 Board Grid -->
+      <div class="board-grid" id="board">
+        <div class="square" data-index="0"></div>
+        <div class="square" data-index="1"></div>
+        <div class="square" data-index="2"></div>
+        <div class="square" data-index="3"></div>
+        <div class="square" data-index="4"></div>
+        <div class="square" data-index="5"></div>
+        <div class="square" data-index="6"></div>
+        <div class="square" data-index="7"></div>
+        <div class="square" data-index="8"></div>
+      </div>
+
+      <div class="flex gap-sm">
+        <button id="game-reset-btn" class="btn btn-secondary">
+          <i class="fa-solid fa-rotate-right"></i> 다시 하기
+        </button>
+        <button id="game-leave-btn" class="btn btn-outline">
+          <i class="fa-solid fa-right-from-bracket"></i> 방 나가기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. SETTINGS MODAL -->
+  <div id="settings-modal" class="modal-overlay">
+    <div class="modal-content">
+      <button id="settings-close-btn" class="modal-close">&times;</button>
+      <h2 style="margin-bottom: 20px;"><i class="fa-solid fa-gear"></i> 시스템 설정</h2>
+      
+      <div class="settings-body">
+        <div class="input-group">
+          <label>소리 효과</label>
+          <button id="sound-setting-btn" class="btn btn-secondary">
+            <i class="fa-solid fa-volume-high"></i> 소리 활성화됨
+          </button>
+        </div>
+
+        <div class="divider" style="margin: 16px 0;">Firebase 연동 설정</div>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 12px; line-height: 1.4;">
+          실시간 멀티플레이어를 사용하기 위해 Firebase 설정 값을 입력하세요. 미설정 시 로컬 및 AI 모드만 사용 가능합니다.
+        </p>
+
+        <div class="input-group">
+          <label for="fb-api-key">API Key</label>
+          <input type="password" id="fb-api-key" class="input-control" placeholder="AIzaSy...">
+        </div>
+        
+        <div class="input-group">
+          <label for="fb-db-url">Database URL</label>
+          <input type="text" id="fb-db-url" class="input-control" placeholder="https://[project-id]-default-rtdb.firebaseio.com">
+        </div>
+
+        <div class="input-group">
+          <label for="fb-project-id">Project ID</label>
+          <input type="text" id="fb-project-id" class="input-control" placeholder="my-tictactoe-project">
+        </div>
+
+        <div class="flex gap-sm mt-md">
+          <button id="settings-save-btn" class="btn btn-primary">저장</button>
+          <button id="settings-clear-btn" class="btn btn-outline">초기화</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. RESULT MODAL (Game Over) -->
+  <div id="result-modal" class="modal-overlay">
+    <div class="modal-content">
+      <h2 style="color: var(--color-text-muted); font-size: 1.1rem; text-transform: uppercase; letter-spacing: 2px;">게임 종료</h2>
+      <div id="result-title" class="winner-message x-win">X 승리!</div>
+      <p id="result-subtext" class="winner-subtext">축하합니다! 완벽한 승리입니다.</p>
+      
+      <div class="flex gap-sm">
+        <button id="modal-rematch-btn" class="btn btn-primary">
+          <i class="fa-solid fa-rotate-right"></i> 다시 하기
+        </button>
+        <button id="modal-close-btn" class="btn btn-outline">
+          <i class="fa-solid fa-xmark"></i> 닫기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Script Modules -->
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
