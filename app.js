@@ -275,7 +275,7 @@ function setupEventListeners() {
       const roomData = await fb.joinRoom(code, name);
       
       displayRoomCode.innerText = code;
-      hostNameEl.innerText = roomData.players.X;
+      hostNameEl.innerText = roomData.p.X;
       guestNameEl.innerText = name;
       guestSlot.classList.add("filled");
       
@@ -454,7 +454,7 @@ function startTimer() {
   timerInterval = setInterval(() => {
     // If online, check elapsed database seconds
     if (currentGameMode === "online" && onlineRoomState) {
-      const elapsed = (Date.now() - onlineRoomState.lastMoveTime) / 1000;
+      const elapsed = (Date.now() - onlineRoomState.m) / 1000;
       timeRemaining = Math.max(0, Math.ceil(15 - elapsed));
     } else {
       timeRemaining--;
@@ -739,10 +739,10 @@ function subscribeRoom(roomCode) {
     onlineRoomState = room;
     
     // 1. Sync Lobby User State
-    if (room.status === "waiting") {
-      hostNameEl.innerText = room.players.X;
-      if (room.players.O && room.players.O !== "") {
-        guestNameEl.innerText = room.players.O;
+    if (room.s === "waiting") {
+      hostNameEl.innerText = room.p.X;
+      if (room.p.O && room.p.O !== "") {
+        guestNameEl.innerText = room.p.O;
         guestSlot.classList.add("filled");
       } else {
         guestNameEl.innerText = "대기 중...";
@@ -751,9 +751,9 @@ function subscribeRoom(roomCode) {
     }
 
     // 2. Transits screen from lobby to game when O player joins
-    if (room.status === "playing" && gameScreen.style.display !== "flex") {
-      playerNames.X = room.players.X;
-      playerNames.O = room.players.O;
+    if (room.s === "playing" && gameScreen.style.display !== "flex") {
+      playerNames.X = room.p.X;
+      playerNames.O = room.p.O;
       
       scores.X = 0;
       scores.O = 0;
@@ -766,14 +766,15 @@ function subscribeRoom(roomCode) {
     }
 
     // 3. Game Playing updates
-    if (room.status === "playing") {
+    if (room.s === "playing") {
       gameActive = true;
-      activePlayer = room.turn;
+      activePlayer = room.t;
       
       // Update Board drawing on changes
+      const roomBoard = fb.boardToArray(room.b);
       for (let i = 0; i < 9; i++) {
-        if (board[i] !== room.board[i]) {
-          board[i] = room.board[i];
+        if (board[i] !== roomBoard[i]) {
+          board[i] = roomBoard[i];
           drawSymbol(i, board[i]);
           
           // Trigger placing click sounds
@@ -791,14 +792,15 @@ function subscribeRoom(roomCode) {
     }
 
     // 4. Game GameOver updates
-    if (room.status === "finished") {
+    if (room.s === "finished") {
       gameActive = false;
       clearInterval(timerInterval);
 
       // Sync final board state
+      const roomBoard = fb.boardToArray(room.b);
       for (let i = 0; i < 9; i++) {
-        if (board[i] !== room.board[i]) {
-          board[i] = room.board[i];
+        if (board[i] !== roomBoard[i]) {
+          board[i] = roomBoard[i];
           drawSymbol(i, board[i]);
         }
       }
@@ -812,20 +814,20 @@ function subscribeRoom(roomCode) {
       }
 
       // Update local scores
-      if (room.winner === "draw") {
+      if (room.w === "draw") {
         scores.ties++;
-      } else if (room.winner.startsWith("timeout_")) {
-        const loser = room.winner.split("_")[1];
+      } else if (room.w.startsWith("timeout_")) {
+        const loser = room.w.split("_")[1];
         const winner = loser === "X" ? "O" : "X";
         scores[winner]++;
       } else {
-        scores[room.winner]++;
+        scores[room.w]++;
       }
       updateScoreboardUI();
 
       // Rematch buttons handling
-      const rX = room.rematch?.X || false;
-      const rO = room.rematch?.O || false;
+      const rX = room.r?.X || false;
+      const rO = room.r?.O || false;
 
       // Update rematch UI message
       if (rX && rO) {
@@ -850,7 +852,7 @@ function subscribeRoom(roomCode) {
       // Pop result modal if not active already
       if (!resultModal.classList.contains("active")) {
         setTimeout(() => {
-          showResult(room.winner);
+          showResult(room.w);
         }, 700);
       }
     }

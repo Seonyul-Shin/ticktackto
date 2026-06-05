@@ -1,4 +1,4 @@
-// Firebase Realtime Database Connector
+// Firebase Realtime Database Connector (Highly Optimized for Minimum Bandwidth and Storage)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, set, onValue, get, update, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import { getFirebaseConfig, isFirebaseConfigured } from "./config.js";
@@ -6,6 +6,16 @@ import { getFirebaseConfig, isFirebaseConfigured } from "./config.js";
 let app = null;
 let db = null;
 let activeListeners = [];
+
+// Board conversions: Array of 9 strings <-> 9-char string (using '.' for empty cells)
+export function boardToArray(boardStr) {
+  if (!boardStr) return Array(9).fill("");
+  return boardStr.split("").map(char => char === "." ? "" : char);
+}
+
+export function boardToString(boardArr) {
+  return boardArr.map(val => val === "" ? "." : val).join("");
+}
 
 export function getDb() {
   if (db) return db;
@@ -29,8 +39,14 @@ function generateRoomCode() {
 
 /**
  * Creates a multiplayer room.
- * @param {string} hostName - Name of the hosting player
- * @returns {Promise<string>} - The generated 6-digit room code
+ * Key mapping for minimal storage:
+ * - s: status (waiting | playing | finished)
+ * - p: players (X, O names)
+ * - b: board string (".........")
+ * - t: turn (X | O)
+ * - m: lastMoveTime (timestamp)
+ * - w: winner
+ * - r: rematch requests (X, O booleans)
  */
 export async function createRoom(hostName) {
   const database = getDb();
@@ -48,16 +64,16 @@ export async function createRoom(hostName) {
   }
 
   const roomData = {
-    status: "waiting",
-    players: {
+    s: "waiting",
+    p: {
       X: hostName,
       O: ""
     },
-    board: Array(9).fill(""),
-    turn: "X",
-    lastMoveTime: Date.now(),
-    winner: null,
-    rematch: {
+    b: ".........",
+    t: "X",
+    m: Date.now(),
+    w: null,
+    r: {
       X: false,
       O: false
     }
@@ -65,7 +81,7 @@ export async function createRoom(hostName) {
 
   await set(roomRef, roomData);
   
-  // Automatically clean up room if host disconnects
+  // Automatically clean up room if host disconnects to save storage
   onDisconnect(roomRef).remove().catch(err => console.log("onDisconnect failed", err));
 
   return roomCode;
@@ -73,9 +89,6 @@ export async function createRoom(hostName) {
 
 /**
  * Joins an existing multiplayer room.
- * @param {string} roomCode - The 6-digit room code
- * @param {string} guestName - The joining player's name
- * @returns {Promise<object>} - Room state
  */
 export async function joinRoom(roomCode, guestName) {
   const database = getDb();
@@ -89,22 +102,22 @@ export async function joinRoom(roomCode, guestName) {
   }
 
   const roomData = snapshot.val();
-  if (roomData.status !== "waiting" || (roomData.players.O && roomData.players.O !== "")) {
+  if (roomData.s !== "waiting" || (roomData.p.O && roomData.p.O !== "")) {
     throw new Error("Room is already full or game has started.");
   }
 
-  // Update room with joining player info and change status to playing
+  // Update room with guest info and change status to playing
   const updates = {};
-  updates[`rooms/${roomCode}/players/O`] = guestName;
-  updates[`rooms/${roomCode}/status`] = "playing";
-  updates[`rooms/${roomCode}/lastMoveTime`] = Date.now();
+  updates[`rooms/${roomCode}/p/O`] = guestName;
+  updates[`rooms/${roomCode}/s`] = "playing";
+  updates[`rooms/${roomCode}/m`] = Date.now();
 
   await update(ref(database), updates);
 
   // Setup disconnect cleanup for guest
-  const playerORef = ref(database, `rooms/${roomCode}/players/O`);
-  const statusRef = ref(database, `rooms/${roomCode}/status`);
-  const winnerRef = ref(database, `rooms/${roomCode}/winner`);
+  const playerORef = ref(database, `rooms/${roomCode}/p/O`);
+  const statusRef = ref(database, `rooms/${roomCode}/s`);
+  const winnerRef = ref(database, `rooms/${roomCode}/w`);
 
   onDisconnect(playerORef).set("").catch(e => {});
   // Set host as winner if guest leaves mid-game
@@ -116,9 +129,6 @@ export async function joinRoom(roomCode, guestName) {
 
 /**
  * Subscribes to realtime updates of a room.
- * @param {string} roomCode - The room code
- * @param {function} callback - Function called with new room data
- * @returns {function} - Unsubscribe function
  */
 export function listenToRoom(roomCode, callback) {
   const database = getDb();
@@ -140,9 +150,6 @@ export function listenToRoom(roomCode, callback) {
 
 /**
  * Updates the game board and turn in Firebase.
- * @param {string} roomCode - The room code
- * @param {string[]} newBoard - The updated 3x3 board
- * @param {string} nextTurn - The next active player ("X" or "O")
  */
 export async function sendMove(roomCode, newBoard, nextTurn) {
   const database = getDb();
@@ -150,9 +157,9 @@ export async function sendMove(roomCode, newBoard, nextTurn) {
 
   const roomRef = ref(database, `rooms/${roomCode}`);
   const updates = {
-    board: newBoard,
-    turn: nextTurn,
-    lastMoveTime: Date.now()
+    b: boardToString(newBoard),
+    t: nextTurn,
+    m: Date.now()
   };
 
   await update(roomRef, updates);
@@ -160,8 +167,6 @@ export async function sendMove(roomCode, newBoard, nextTurn) {
 
 /**
  * Declares the winner of the game.
- * @param {string} roomCode - Room code
- * @param {string} winnerSymbol - "X", "O", "draw", or "timeout_X" / "timeout_O"
  */
 export async function sendGameOver(roomCode, winnerSymbol) {
   const database = getDb();
@@ -169,8 +174,8 @@ export async function sendGameOver(roomCode, winnerSymbol) {
 
   const roomRef = ref(database, `rooms/${roomCode}`);
   const updates = {
-    status: "finished",
-    winner: winnerSymbol
+    s: "finished",
+    w: winnerSymbol
   };
 
   await update(roomRef, updates);
@@ -178,21 +183,17 @@ export async function sendGameOver(roomCode, winnerSymbol) {
 
 /**
  * Triggers a rematch or requests a rematch.
- * @param {string} roomCode - Room code
- * @param {string} playerSymbol - "X" or "O"
- * @param {boolean} requestState - Rematch request flag
  */
 export async function sendRematchRequest(roomCode, playerSymbol, requestState) {
   const database = getDb();
   if (!database) return;
 
-  const rematchRef = ref(database, `rooms/${roomCode}/rematch/${playerSymbol}`);
+  const rematchRef = ref(database, `rooms/${roomCode}/r/${playerSymbol}`);
   await set(rematchRef, requestState);
 }
 
 /**
  * Reset room state for a new game.
- * @param {string} roomCode - Room code
  */
 export async function resetRoomForRematch(roomCode) {
   const database = getDb();
@@ -200,12 +201,12 @@ export async function resetRoomForRematch(roomCode) {
 
   const roomRef = ref(database, `rooms/${roomCode}`);
   const updates = {
-    status: "playing",
-    board: Array(9).fill(""),
-    turn: "X",
-    lastMoveTime: Date.now(),
-    winner: null,
-    rematch: {
+    s: "playing",
+    b: ".........",
+    t: "X",
+    m: Date.now(),
+    w: null,
+    r: {
       X: false,
       O: false
     }
@@ -216,7 +217,6 @@ export async function resetRoomForRematch(roomCode) {
 
 /**
  * Cleans up and deletes a room when players leave.
- * @param {string} roomCode - Room code
  */
 export async function deleteRoom(roomCode) {
   const database = getDb();
