@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        // Allows anyone to read or write to game rooms to sync matchmaking, moves, and timer states.
+        ".read": "true",
+        ".write": "true"
+      }
+    }
+  }
+}
